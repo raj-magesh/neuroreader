@@ -33,7 +33,7 @@ dependencies = [
     "pandas",
     "pint-pandas",
     "xarray",
-    "pint-xarray"
+    "edfio",
 ]
 version = "0.1.0"  # FIXME(dynamic version): https://github.com/astral-sh/uv/issues/8714
 

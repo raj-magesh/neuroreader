@@ -4,10 +4,9 @@ from pathlib import Path
 from typing import ClassVar, Literal, final
 
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
-import pint
 import pint_pandas  # noqa: F401
-import xarray as xr
 
 from neuroreader._utilities import (
     DataPacket,
@@ -18,8 +17,9 @@ from neuroreader._utilities import (
     parse_time_origin,
     parse_time_resolution,
     read_fields,
-    ureg,
 )
+
+CLOCK_FREQUENCY_IN_HZ = 30_000
 
 BASIC_HEADER_FIELDS = (
     Field("File Type ID", "<", "s", 8),
@@ -64,8 +64,9 @@ DATA_PACKET_FIELDS = (
 class _NFxOrNSx:
     _FILETYPE: ClassVar[Literal["NSx", "NFx"]]
 
-    def __init__(self, filepath: Path) -> None:
+    def __init__(self, filepath: Path, *, dtype: npt.DTypeLike = np.float32) -> None:
         self._filepath = filepath
+        self.dtype = dtype
         self._read_headers()
 
     @functools.cached_property
@@ -77,7 +78,7 @@ class _NFxOrNSx:
         return self._extended_headers
 
     @functools.cached_property
-    def data(self) -> xr.DataArray:
+    def data(self) -> list[DataPacket]:
         self._read_data_packets()
         return self._data
 
@@ -87,10 +88,12 @@ class _NFxOrNSx:
                 read_fields(f, fields=BASIC_HEADER_FIELDS),
             )
 
-            self._extended_headers = _parse_extended_headers([
-                read_fields(f, fields=EXTENDED_HEADER_FIELDS)
-                for _ in range(self._basic_header["Channel Count"])
-            ])
+            self._extended_headers = _parse_extended_headers(
+                [
+                    read_fields(f, fields=EXTENDED_HEADER_FIELDS)
+                    for _ in range(self._basic_header["Channel Count"])
+                ],
+            )
 
     def _read_data_packets(self) -> None:
         n_channels: int = self._basic_header["Channel Count"]
@@ -125,53 +128,10 @@ class _NFxOrNSx:
                 _ = f.seek(n_data_points * n_channels * dtype.itemsize, os.SEEK_CUR)
                 data_packets.append(packet)
 
-        self._data = self._parse_data_packets(data_packets)
+        self._data = data_packets
 
-    def _parse_data_packets(self, data_packets: list[DataPacket], /) -> xr.DataArray:
-        return xr.concat(
-            [
-                xr.DataArray(
-                    data=np.asarray(data_["Data Points"]),
-                    dims=("time", "channel"),
-                    coords={
-                        "timestamp": (
-                            "time",
-                            data_["Timestamp"]
-                            + self.basic_header["Period"]
-                            * np.arange(
-                                (data_["Number of Data Points"]),
-                                dtype=np.uint32,
-                            ),
-                        ),
-                    },
-                )
-                for data_ in data_packets
-            ],
-            dim="time",
-        )
-
-    def formatted(self) -> xr.DataArray:
-        headers = self.extended_headers
-        d_min = headers["Min Digital Value"].to_numpy()
-        a_min = headers["Min Analog Value"].values.numpy_data
-        f = headers["Conversion Factor"].values.numpy_data
-        unit = headers["Units"].dtype.units
-
-        return xr.DataArray(
-            name="voltage",
-            data=a_min + (self.data - d_min) * f,
-            dims=self.data.dims,
-            coords={
-                "electrode": ("channel", headers.index),
-                "time": (
-                    "time",
-                    self.data["timestamp"].data
-                    / self.basic_header["Time Resolution of Time Stamps"].magnitude,
-                    {"units": "s"},
-                ),
-            },
-            attrs={"units": unit, "start_time": self.basic_header["Time Origin"]},
-        ).pint.quantify()
+    def sampling_frequency(self) -> float:
+        return CLOCK_FREQUENCY_IN_HZ / self.basic_header["Period"]
 
 
 def _parse_basic_header(x: Header, /) -> Header:
@@ -184,20 +144,22 @@ def _parse_basic_header(x: Header, /) -> Header:
     }
 
 
-def _parse_extended_headers(extended_headers: list[Header], /) -> pd.DataFrame:
+def _parse_extended_headers(
+    extended_headers: list[Header],
+) -> pd.DataFrame:
     headers = pd.DataFrame(extended_headers)
     headers = parse_filter_details(headers)
-    headers = (
-        headers.assign(**{  # pyright: ignore[reportUnknownArgumentType]
-            "Neural Processor Port": lambda x: (  # pyright: ignore[reportUnknownLambdaType]
-                x["Front End ID"]  # pyright: ignore[reportUnknownMemberType]
+    return (
+        headers.assign(**{
+            "Neural Processor Port": lambda x: (
+                x["Front End ID"]
                 .replace(list(range(4)), "A")
                 .replace(list(range(4, 8)), "B")
                 .replace(list(range(8, 12)), "C")
                 .replace(list(range(12, 16)), "D")
             ),
-            "Analog Data Channel": lambda x: (x["Electrode ID"] >= 10241),  # pyright: ignore[reportUnknownLambdaType]
-            "Recording Electrode": lambda x: ~x["Analog Data Channel"],  # pyright: ignore[reportUnknownLambdaType]
+            "Analog Data Channel": lambda x: (x["Electrode ID"] >= 10_241),
+            "Recording Electrode": lambda x: ~x["Analog Data Channel"],
         }).astype({
             "Type": "string",
             "Electrode ID": np.uint16,
@@ -208,44 +170,33 @@ def _parse_extended_headers(extended_headers: list[Header], /) -> pd.DataFrame:
             "Max Digital Value": np.int16,
             "Min Analog Value": np.int16,
             "Max Analog Value": np.int16,
+            "Units": "string",
             "Neural Processor Port": pd.CategoricalDtype(["A", "B", "C", "D"]),
         })
     ).set_index("Electrode ID")
-
-    headers["Units"] = [
-        pint.Quantity(np.int16(1), ureg(unit))
-        for unit in headers["Units"].tolist()
-        if unit in {"mV", "uV"}
-    ]
-    headers["Units"] = headers["Units"].pint.convert_object_dtype()
-
-    for direction in ("Min", "Max"):
-        headers[f"{direction} Analog Value"] *= headers["Units"]
-
-    headers["Conversion Factor"] = (
-        _upcast_pint_series(headers["Max Analog Value"], subdtype="Int64")
-        - _upcast_pint_series(headers["Min Analog Value"], subdtype="Int64")
-    ) / (
-        headers["Max Digital Value"].astype(np.int64)
-        - headers["Min Digital Value"].astype(np.int64)
-    )
-
-    return headers
-
-
-def _upcast_pint_series(
-    x: pd.Series,
-    *,
-    subdtype: Literal["Int64", "Uint64"],
-) -> pd.Series:
-    return x.astype(f"pint[{x.dtype.units}][{subdtype}]")
 
 
 @final
 class NFx(_NFxOrNSx):
     _FILETYPE = "NFx"
 
+    @property
+    def NEUCDFLT(self) -> Header:  # noqa: N802
+        return self.basic_header
+
+    @property
+    def FC(self) -> Header:  # noqa: N802
+        return self.extended_headers
+
 
 @final
 class NSx(_NFxOrNSx):
     _FILETYPE = "NSx"
+
+    @property
+    def NEURALCD(self) -> Header:  # noqa: N802
+        return self.basic_header
+
+    @property
+    def CC(self) -> Header:  # noqa: N802
+        return self.extended_headers

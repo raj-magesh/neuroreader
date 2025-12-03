@@ -4,7 +4,7 @@ preview = true
 [lint]
 select = ["ALL"]
 ignore = [
-    # "CPY001",
+    "CPY001",
     # "PD013",
     # "D103",
     # "E302",

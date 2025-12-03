@@ -5,6 +5,7 @@ from io import BufferedReader
 from typing import Literal, NamedTuple
 
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 import pint
 import pint_pandas  # noqa: F401
@@ -14,12 +15,29 @@ DataPacket = dict[str, object]
 
 ureg = pint.get_application_registry()
 
+_STRUCT_FORMAT_TO_NUMPY_DTYPE_MAPPING = {
+    "I": "u4",
+    "i": "i4",
+    "H": "u2",
+    "h": "i2",
+    "B": "B",
+}
+
 
 class Field(NamedTuple):
     name: str
     prefix: Literal["@", "=", "<", ">", "!"]
     format_character: Literal["c", "b", "B", "h", "H", "i", "I", "f", "d", "s"]
     n_bytes: int
+
+    def to_numpy_dtype(self) -> npt.DTypeLike:
+        label = (self.name, self.name.lower().replace(" ", "_"))
+        format_string = f"{self.prefix}{_STRUCT_FORMAT_TO_NUMPY_DTYPE_MAPPING[self.format_character]}"
+        n_elements = self.n_bytes // struct.calcsize(self.format_character)
+
+        if n_elements == 1:
+            return (label, format_string)
+        return (label, format_string, n_elements)
 
 
 def read_field(

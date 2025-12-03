@@ -1,7 +1,8 @@
 import functools
+import itertools
 import os
 from pathlib import Path
-from typing import TypedDict, cast, final
+from typing import Literal, TypedDict, final
 
 import numpy as np
 import numpy.typing as npt
@@ -10,7 +11,6 @@ import pint_pandas  # noqa: F401
 import xarray as xr
 
 from neuroreader._utilities import (
-    DataPacket,
     Field,
     Header,
     parse_file_spec,
@@ -21,9 +21,6 @@ from neuroreader._utilities import (
     read_fields,
 )
 
-N_BYTES_INT16 = 2
-N_BYTES_INT32 = 4
-
 Events = TypedDict(
     "Events",
     {
@@ -31,46 +28,6 @@ Events = TypedDict(
         "Spike Events": xr.DataArray | None,
         "Stimulation Events": xr.DataArray | None,
     },
-)
-
-DigitalEventDataPacket = TypedDict(
-    "DigitalEventDataPacket",
-    {
-        "Timestamp": int,
-        "Packet ID": int,
-        "Packet Insertion Reason": int,
-        "Reserved": None,
-        "Parallel Input": int,
-        "SMA Input 1": int,
-        "SMA Input 2": int,
-        "SMA Input 3": int,
-        "SMA Input 4": int,
-    },
-)
-
-SpikeEventDataPacket = TypedDict(
-    "SpikeEventDataPacket",
-    {
-        "Timestamp": int,
-        "Packet ID": int,
-        "Unit Classification Number": int,
-        "Reserved": None,
-        "Waveform": npt.NDArray[np.integer],
-    },
-)
-
-StimulationEventDataPacket = TypedDict(
-    "StimulationEventDataPacket",
-    {
-        "Timestamp": int,
-        "Packet ID": int,
-        "Reserved": None,
-        "Waveform": npt.NDArray[np.integer],
-    },
-)
-
-EventDataPacket = (
-    DigitalEventDataPacket | SpikeEventDataPacket | StimulationEventDataPacket
 )
 
 BASIC_HEADER_FIELDS = (
@@ -129,8 +86,14 @@ EXTENDED_HEADER_FIELDS: dict[str, tuple[Field, ...]] = {
     ),
 }
 
-DATA_PACKET_FIELDS: dict[frozenset[int], list[Field]] = {
-    frozenset([0]): [
+DATA_PACKET_ID_MAPPING = {
+    "Digital Events": frozenset([0]),
+    "Spike Events": frozenset(range(1, 512 + 1)),
+    "Stimulation Events": frozenset(range(5121, 5632 + 1)),
+}
+
+DATA_PACKET_FIELDS: dict[str, list[Field]] = {
+    "Digital Events": [
         Field("Timestamp", "<", "I", 4),
         Field("Packet ID", "<", "H", 2),
         Field("Packet Insertion Reason", "<", "B", 1),
@@ -140,26 +103,34 @@ DATA_PACKET_FIELDS: dict[frozenset[int], list[Field]] = {
         Field("SMA Input 2", "<", "h", 2),
         Field("SMA Input 3", "<", "h", 2),
         Field("SMA Input 4", "<", "h", 2),
+        # should have Field("Reserved", "<", "B", packet_size - 18)
+        # but packet_size is variable, so computed dynamically
     ],
-    frozenset(range(1, 512 + 1)): [
+    "Spike Events": [
         Field("Timestamp", "<", "I", 4),
         Field("Packet ID", "<", "H", 2),
         Field("Unit Classification Number", "<", "B", 1),
         Field("Reserved", "<", "B", 1),
+        # should have Field("Reserved", "<", "B", packet_size - 8)
+        # but packet_size is variable, so computed dynamically
     ],
-    frozenset(range(5121, 5632 + 1)): [
+    "Stimulation Events": [
         Field("Timestamp", "<", "I", 4),
         Field("Packet ID", "<", "H", 2),
         Field("Reserved", "<", "B", 2),
+        # should have Field("Reserved", "<", "B", packet_size - 8)
+        # but packet_size is variable, so computed dynamically
     ],
 }
 
 
 @final
 class NEV:
-    def __init__(self, filepath: Path) -> None:
+    def __init__(self, filepath: Path, *, n_packets_per_buffer: int = 2**20) -> None:
         self._filepath = filepath
+        self._data: Events
         self._read_headers()
+        self._n_packets_per_buffer = n_packets_per_buffer
 
     @functools.cached_property
     def basic_header(self) -> Header:
@@ -170,9 +141,29 @@ class NEV:
         return self._extended_headers
 
     @functools.cached_property
-    def data(self) -> xr.DataArray:
+    def data(self) -> Events:
         self._read_data_packets()
         return self._data
+
+    @property
+    def NEURALEV(self) -> Header:  # noqa: N802
+        return self._basic_header
+
+    @property
+    def NEUEVWAV(self) -> pd.DataFrame:  # noqa: N802
+        return self.extended_headers["NEUEVWAV"]
+
+    @property
+    def NEUEVFLT(self) -> pd.DataFrame:  # noqa: N802
+        return self.extended_headers["NEUEVFLT"]
+
+    @property
+    def NEUEVLBL(self) -> pd.DataFrame:  # noqa: N802
+        return self.extended_headers["NEUEVLBL"]
+
+    @property
+    def DIGLABEL(self) -> pd.DataFrame:  # noqa: N802
+        return self.extended_headers["DIGLABEL"]
 
     @property
     def spikes(self) -> xr.DataArray | None:
@@ -183,7 +174,7 @@ class NEV:
         return self.data["Stimulation Events"]
 
     @property
-    def digital_events(self) -> xr.DataArray | None:
+    def digital_events(self) -> pd.DataFrame | None:
         return self.data["Digital Events"]
 
     def _read_headers(self) -> None:
@@ -205,82 +196,58 @@ class NEV:
             self._extended_headers = _parse_extended_headers(headers)
 
     def _read_data_packets(self) -> None:
-        fields = {
-            "timestamp": Field("", "<", "I", 4),
-            "packet_id": Field("", "<", "H", 2),
-        }
+        n_bytes_per_packet = self.basic_header["Bytes in Data Packets"]
+        n_bytes_in_headers = self.basic_header["Bytes in Headers"]
 
-        bytes_per_sample = self.extended_headers["NEUEVWAV"][
-            "Bytes per Sample"
-        ].to_dict()
-        packet_size = cast("int", self.basic_header["Bytes in Data Packets"])
+        n_bytes_in_file = self._filepath.stat().st_size
 
-        data_packets: list[DataPacket] = []
+        n_packets = (n_bytes_in_file - n_bytes_in_headers) / n_bytes_per_packet
 
-        n_bytes_in_headers = cast("int", self.basic_header["Bytes in Headers"])
+        if n_packets.is_integer():
+            n_packets = int(n_packets)
+        else:
+            raise ValueError
 
-        with self._filepath.open("rb") as f:
-            file_size = f.seek(0, os.SEEK_END)
-            _ = f.seek(n_bytes_in_headers, os.SEEK_SET)
+        self._data = {k: [] for k in DATA_PACKET_ID_MAPPING}
 
-            while f.tell() < file_size:
-                timestamp = cast("int", read_field(f, field=fields["timestamp"]))
+        for bytes_ in itertools.batched(
+            range(n_bytes_in_headers, n_bytes_in_file),
+            n=self._n_packets_per_buffer * n_bytes_per_packet,
+            strict=False,
+        ):
+            contents = np.memmap(
+                self._filepath,
+                dtype=np.dtype("B"),
+                mode="r",
+                offset=bytes_[0],
+                shape=(len(bytes_) // n_bytes_per_packet, n_bytes_per_packet),
+            )
 
-                if hex(timestamp) == "0xffffffff":
-                    # TODO
-                    raise NotImplementedError
+            packet_ids = np.squeeze(contents[:, 4:6].view("<u2"))
+            if int("0xffffffff", 0) in packet_ids:
+                error = "continuation packets not implemented"
+                raise NotImplementedError(error)
 
-                packet_id = cast("int", read_field(f, field=fields["packet_id"]))
-                _ = f.seek(
-                    -(fields["timestamp"].n_bytes + fields["packet_id"].n_bytes),
-                    os.SEEK_CUR,
+            for event_type, ids in DATA_PACKET_ID_MAPPING.items():
+                self._data[event_type].append(
+                    contents[np.isin(packet_ids, list(ids)), :],
                 )
 
-                packet_id_identified = False
-                for key in DATA_PACKET_FIELDS:
-                    if packet_id in key:
-                        packet_id_identified = True
-                        break
+        for key, value in self._data.items():
+            if len(value) != 0:
+                self._data[key] = np.concatenate(value, axis=0)
 
-                if not packet_id_identified:
-                    break
-
-                packet = read_fields(f, fields=DATA_PACKET_FIELDS[key])
-
-                if packet_id == 0:
-                    packet["Reserved"] = read_field(
-                        f,
-                        field=Field("", "<", "s", packet_size - 18),
-                    )
-                else:
-                    n_bytes = bytes_per_sample[packet["Packet ID"]]
-
-                    if n_bytes == N_BYTES_INT16:
-                        dtype = np.dtype(np.int16)
-                    elif n_bytes == N_BYTES_INT32:
-                        dtype = np.dtype(np.int32)
-                    else:
-                        error = f"`Bytes per Sample` for `Electrode ID` {packet['Electrode ID']} is {n_bytes}, but only 2- and 4-byte integers are supported"
-                        raise ValueError(error)
-
-                    shape: float = (packet_size - 8) / n_bytes
-                    if shape.is_integer():
-                        shape = int(shape)
-                    else:
-                        raise ValueError
-
-                    packet["Waveform"] = np.memmap(
-                        self._filepath,
-                        dtype=dtype.newbyteorder("<"),
-                        mode="r",
-                        offset=f.tell(),
-                        shape=(shape,),
-                    )
-                    _ = f.seek(packet_size - 8, os.SEEK_CUR)
-
-                data_packets.append(packet)
-
-        self._data = _parse_data_packets(data_packets)
+        self._data["Digital Events"] = _parse_digital_events(
+            self._data["Digital Events"],
+            packet_size=n_bytes_per_packet,
+        )
+        for event_type in ("Spike Events", "Stimulation Events"):
+            self._data[event_type] = _parse_spike_or_stimulation_events(
+                self._data[event_type],
+                event_type=event_type,
+                header=self.NEUEVWAV,
+                packet_size=n_bytes_per_packet,
+            )
 
 
 def _parse_basic_header(x: Header) -> Header:
@@ -364,86 +331,95 @@ def _parse_extended_headers(extended_headers: list[Header]) -> dict[str, pd.Data
     return headers
 
 
-def _parse_data_packets(
-    data_packets: list[EventDataPacket],
-) -> Events:
-    data: dict[int, list[EventDataPacket]] = {}
+def _parse_spike_or_stimulation_events(
+    events: npt.NDArray[np.uint8],
+    *,
+    event_type: Literal["Spike Events", "Stimulation Events"],
+    header: Header,
+    packet_size: int,
+) -> xr.DataArray:
+    parsed_events = []
 
-    for packet in data_packets:
-        packet_id = packet["Packet ID"]
-
-        if packet_id in data:
-            data[packet_id].append(packet)
-        else:
-            data[packet_id] = [packet]
-
-    events: Events = {
-        "Digital Events": None,
-        "Spike Events": None,
-        "Stimulation Events": None,
-    }
-    events_: dict[str, list[xr.DataArray]] = {
-        "Spike Events": [],
-        "Stimulation Events": [],
-    }
-
-    for packet_id, data_ in data.items():
-        event = pd.DataFrame(data_).drop(columns=["Packet ID", "Reserved"])
-
-        types = {"Timestamp": np.uint32}
-
-        if packet_id == 0:
-            types |= {
-                "Parallel Input": np.uint16,
-                "Packet Insertion Reason": np.uint8,
-            }
-            types |= {f"SMA Input {1 + idx}": np.int16 for idx in range(4)}
-        elif packet_id in set(range(1, 512 + 1)):
-            types |= {"Unit Classification Number": np.uint8}
-            event_type = "Spike Events"
-        elif packet_id in set(range(5121, 5632 + 1)):
-            event_type = "Stimulation Events"
-        else:
-            raise ValueError
-
-        event = event.astype(types)
-
-        if (packet_id == 0) and (events["Digital Events"] is None):
-            events["Digital Events"] = _parse_digital_events(event)
+    packet_ids = np.squeeze(events[:, 4:6].view("<u2"))
+    for n_bytes_per_sample in pd.unique(header["Bytes per Sample"]):
+        events_ = events[
+            np.isin(
+                packet_ids,
+                header.loc[
+                    header["Bytes per Sample"] == n_bytes_per_sample
+                ].index.to_list(),
+            ),
+            ...,
+        ]
+        if len(events_) == 0:
             continue
 
-        events_[event_type].append(
+        fields = DATA_PACKET_FIELDS[event_type]
+        field_name = "Waveform"
+        dtype = np.dtype(
+            [field.to_numpy_dtype() for field in fields]
+            + [
+                (
+                    (field_name, field_name.lower().replace(" ", "_")),
+                    f"<i{n_bytes_per_sample}",
+                    (packet_size - sum(field.n_bytes for field in fields))
+                    // n_bytes_per_sample,
+                ),
+            ],
+        )
+        parsed_events.append(
             xr.DataArray(
                 name=event_type,
-                data=np.stack(event["Waveform"]),
+                data=events_.view(dtype=dtype).ravel()["Waveform"],
                 dims=("event", "time"),
                 coords={
-                    column: ("event", coord)
-                    for column, coord in event.drop(columns=["Waveform"]).items()
-                }
-                | {
-                    "Electrode ID": (
+                    dtype.fields[name][2]: (
                         "event",
-                        packet_id * np.ones((len(event),), dtype=np.uint16),
-                    ),
+                        events_.view(dtype=dtype).ravel()[name],
+                    )
+                    for name in dtype.names
+                    if name not in {"reserved", "waveform"}
                 },
             ),
         )
 
-    for event_type in ("Spike Events", "Stimulation Events"):
-        if len(events_[event_type]) > 0:
-            events[event_type] = (
-                xr.concat(events_[event_type], dim="event")
-                .set_xindex(["Electrode ID", "Timestamp"])
-                .sortby("Electrode ID", "Timestamp")
-            )
-        else:
-            events[event_type] = None
+    return (
+        (
+            xr.concat(parsed_events, dim="event")
+            .set_xindex(["Packet ID", "Timestamp"])
+            .sortby("Timestamp", "Packet ID")
+            .rename({"Packet ID": "Electrode ID"})
+        )
+        if len(parsed_events) > 0
+        else None
+    )
 
-    return events
 
+def _parse_digital_events(
+    events: npt.NDArray[np.uint8],
+    *,
+    packet_size: int,
+) -> pd.DataFrame:
+    fields = DATA_PACKET_FIELDS["Digital Events"]
+    field_name = "Reserved 2"
+    dtype = np.dtype(
+        [field.to_numpy_dtype() for field in fields]
+        + [
+            (
+                (field_name, field_name.lower().replace(" ", "_")),
+                "<B",
+                packet_size - sum(field.n_bytes for field in fields),
+            ),
+        ],
+    )
+    x = pd.DataFrame(
+        {
+            dtype.fields[name][2]: events.view(dtype=dtype).ravel()[name]
+            for name in dtype.names
+            if name not in {"reserved", "packet_id", "reserved_2"}
+        },
+    )
 
-def _parse_digital_events(x: pd.DataFrame) -> pd.DataFrame:
     return (
         pd.concat(
             [
