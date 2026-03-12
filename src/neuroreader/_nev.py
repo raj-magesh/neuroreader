@@ -1,8 +1,7 @@
 import functools
 import itertools
 import os
-from pathlib import Path
-from typing import Literal, TypedDict, final
+from typing import TYPE_CHECKING, Literal, TypedDict, final
 
 import numpy as np
 import numpy.typing as npt
@@ -20,6 +19,9 @@ from neuroreader._utilities import (
     read_field,
     read_fields,
 )
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 Events = TypedDict(
     "Events",
@@ -87,9 +89,9 @@ EXTENDED_HEADER_FIELDS: dict[str, tuple[Field, ...]] = {
 }
 
 DATA_PACKET_ID_MAPPING = {
-    "Digital Events": frozenset([0]),
-    "Spike Events": frozenset(range(1, 512 + 1)),
-    "Stimulation Events": frozenset(range(5121, 5632 + 1)),
+    "Digital Events": [0],
+    "Spike Events": list(range(1, 512 + 1)),
+    "Stimulation Events": list(range(5121, 5632 + 1)),
 }
 
 DATA_PACKET_FIELDS: dict[str, list[Field]] = {
@@ -230,7 +232,7 @@ class NEV:
 
             for event_type, ids in DATA_PACKET_ID_MAPPING.items():
                 self._data[event_type].append(
-                    contents[np.isin(packet_ids, list(ids)), :],
+                    contents[np.isin(packet_ids, ids), :],
                 )
 
         for key, value in self._data.items():

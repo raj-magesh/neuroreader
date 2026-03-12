@@ -1,7 +1,6 @@
 import functools
 import os
-from pathlib import Path
-from typing import ClassVar, Literal, final
+from typing import TYPE_CHECKING, ClassVar, Literal, final
 
 import numpy as np
 import numpy.typing as npt
@@ -18,6 +17,9 @@ from neuroreader._utilities import (
     parse_time_resolution,
     read_fields,
 )
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 CLOCK_FREQUENCY_IN_HZ = 30_000
 
@@ -158,7 +160,7 @@ def _parse_extended_headers(
                 .replace(list(range(8, 12)), "C")
                 .replace(list(range(12, 16)), "D")
             ),
-            "Analog Data Channel": lambda x: (x["Electrode ID"] >= 10_241),
+            "Analog Data Channel": lambda x: x["Electrode ID"] >= 10_241,
             "Recording Electrode": lambda x: ~x["Analog Data Channel"],
         }).astype({
             "Type": "string",

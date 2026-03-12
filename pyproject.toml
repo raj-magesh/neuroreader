@@ -6,20 +6,16 @@ build-backend = "uv_build"
 name = "neuroreader"
 description = "Utility to read and parse .nev, .nsx, and .nfx files used in neural recordings"
 readme = "README.md"
-requires-python = ">=3.13"
-license = { file = "LICENSE" }
-authors = [{ name = "Raj Magesh Gauthaman", email = "neuroreader@raj-magesh.org" }]
-keywords = [
-    "neural recording",
-    "parser",
-    ".nev",
-    ".nsx",
-    ".nfx",
+requires-python = ">=3.14"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Raj Magesh Gauthaman", email = "neuroreader@raj-magesh.org" },
 ]
+keywords = ["neural recording", "parser", ".nev", ".nsx", ".nfx"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
     "Natural Language :: English",
     "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3",
@@ -27,22 +23,13 @@ classifiers = [
     "Typing :: Typed",
 ]
 urls = { repository = "https://codeberg.org/raj-magesh/neuroreader" }
-dependencies = [
-    "numpy",
-    "pint",
-    "pandas",
-    "pint-pandas",
-    "xarray",
-    "edfio",
-]
-version = "0.1.0"  # FIXME(dynamic version): https://github.com/astral-sh/uv/issues/8714
+dependencies = ["numpy", "pint", "pandas", "pint-pandas", "xarray", "edfio"]
+version = "0.1.0"
 
 [dependency-groups]
-dev = [
-    "ruff",
-    "pytest",
-    "sphinx",
-]
+dev = ["ruff", "pytest", "sphinx"]
 
 [tool.uv]
-environments = ["sys_platform == 'linux' and platform_machine == 'x86_64'"]
+required-environments = [
+    "sys_platform == 'linux' and platform_machine == 'x86_64'",
+]

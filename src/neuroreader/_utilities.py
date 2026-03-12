@@ -1,8 +1,6 @@
 import struct
-from collections.abc import Sequence
 from datetime import UTC, datetime
-from io import BufferedReader
-from typing import Literal, NamedTuple
+from typing import TYPE_CHECKING, Literal, NamedTuple
 
 import numpy as np
 import numpy.typing as npt
@@ -10,10 +8,17 @@ import pandas as pd
 import pint
 import pint_pandas  # noqa: F401
 
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+    from io import BufferedReader
+
 Header = dict[str, object]
 DataPacket = dict[str, object]
 
-ureg = pint.get_application_registry()
+ureg = pint.UnitRegistry()
+ureg.formatter.default_format = "~P"
+
+pint.set_application_registry(ureg)
 
 _STRUCT_FORMAT_TO_NUMPY_DTYPE_MAPPING = {
     "I": "u4",
