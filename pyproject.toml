@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "neuroreader"
-description = "Utility to read and parse .nev, .nsx, and .nfx files used in neural recordings"
+description = "Read and parse NEV, NSx, and NFx files from Ripple Neuro neural recording devices"
 readme = "README.md"
 requires-python = ">=3.14"
 license = "GPL-3.0-or-later"
@@ -12,7 +12,14 @@ license-files = ["LICENSE"]
 authors = [
     { name = "Raj Magesh Gauthaman", email = "neuroreader@raj-magesh.org" },
 ]
-keywords = ["neural recording", "parser", ".nev", ".nsx", ".nfx"]
+keywords = [
+    "Ripple Neuro",
+    "neural recording",
+    "file formats",
+    "NEV",
+    "NSx",
+    "NFx",
+]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
@@ -23,7 +30,7 @@ classifiers = [
     "Typing :: Typed",
 ]
 urls = { repository = "https://codeberg.org/raj-magesh/neuroreader" }
-dependencies = ["numpy", "pint", "pandas", "pint-pandas", "xarray", "edfio"]
+dependencies = ["numpy", "pint", "pandas", "pint-pandas", "xarray"]
 version = "0.1.0"
 
 [dependency-groups]
