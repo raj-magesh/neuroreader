@@ -277,7 +277,6 @@ def _parse_extended_headers(extended_headers: list[Header]) -> dict[str, pd.Data
     headers["NEUEVWAV"] = (
         headers["NEUEVWAV"]
         .astype({
-            "Packet ID": "string",
             "Electrode ID": np.uint16,
             "Front End ID": np.uint8,
             "Front End Connector Pin": np.uint8,
@@ -301,7 +300,6 @@ def _parse_extended_headers(extended_headers: list[Header]) -> dict[str, pd.Data
     headers["NEUEVFLT"] = (
         headers["NEUEVFLT"]
         .astype({
-            "Packet ID": "string",
             "Electrode ID": np.uint16,
             "Reserved": np.bytes_,
         })
@@ -312,9 +310,7 @@ def _parse_extended_headers(extended_headers: list[Header]) -> dict[str, pd.Data
     headers["NEUEVLBL"] = (
         headers["NEUEVLBL"]
         .astype({
-            "Packet ID": "string",
             "Electrode ID": np.uint16,
-            "Label": "string",
             "Reserved": np.bytes_,
         })
         .set_index("Electrode ID")
@@ -323,9 +319,6 @@ def _parse_extended_headers(extended_headers: list[Header]) -> dict[str, pd.Data
 
     headers["DIGLABEL"] = (
         _parse_diglabel_mode(headers["DIGLABEL"])
-        .astype({
-            "Label": "string",
-        })
         .drop(columns=["Packet ID", "Reserved"])
         .set_index("Label")
     )

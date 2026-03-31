@@ -163,16 +163,13 @@ def _parse_extended_headers(
             "Analog Data Channel": lambda x: x["Electrode ID"] >= 10_241,
             "Recording Electrode": lambda x: ~x["Analog Data Channel"],
         }).astype({
-            "Type": "string",
             "Electrode ID": np.uint16,
-            "Electrode label": "string",
             "Front End ID": np.uint8,
             "Front End Connector Pin": np.uint8,
             "Min Digital Value": np.int16,
             "Max Digital Value": np.int16,
             "Min Analog Value": np.int16,
             "Max Analog Value": np.int16,
-            "Units": "string",
             "Neural Processor Port": pd.CategoricalDtype(["A", "B", "C", "D"]),
         })
     ).set_index("Electrode ID")
