@@ -1,6 +1,6 @@
 import struct
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Literal, NamedTuple
+from typing import TYPE_CHECKING, Any, Literal, NamedTuple, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -12,8 +12,8 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
     from io import BufferedReader
 
-Header = dict[str, object]
-DataPacket = dict[str, object]
+Header = dict[str, Any]
+DataPacket = dict[str, Any]
 
 ureg = pint.UnitRegistry()
 ureg.formatter.default_format = "~P"
@@ -63,11 +63,13 @@ def read_field(
 
     if field.format_character == "s":
         if decode_strings:
+            output = cast("bytes", output)
             output = output.decode("utf-8")
         if strip_null_bytes:
+            output = cast("str", output)
             output = output.rstrip("\x00")
 
-    return output
+    return cast("str | int | float | bytes", output)
 
 
 def read_fields(

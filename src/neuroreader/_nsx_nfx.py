@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 CLOCK_FREQUENCY_IN_HZ = 30_000
+ANALOG_ELECTRODE_START_INDEX = 10_241
 
 BASIC_HEADER_FIELDS = (
     Field("File Type ID", "<", "s", 8),
@@ -160,7 +161,9 @@ def _parse_extended_headers(
                 .replace(list(range(8, 12)), "C")
                 .replace(list(range(12, 16)), "D")
             ),
-            "Analog Data Channel": lambda x: x["Electrode ID"] >= 10_241,
+            "Analog Data Channel": lambda x: (
+                x["Electrode ID"] >= ANALOG_ELECTRODE_START_INDEX
+            ),
             "Recording Electrode": lambda x: ~x["Analog Data Channel"],
         }).astype({
             "Electrode ID": np.uint16,
@@ -184,7 +187,7 @@ class NFx(_NFxOrNSx):
         return self.basic_header
 
     @property
-    def FC(self) -> Header:  # noqa: N802
+    def FC(self) -> pd.DataFrame:  # noqa: N802
         return self.extended_headers
 
 
@@ -197,5 +200,5 @@ class NSx(_NFxOrNSx):
         return self.basic_header
 
     @property
-    def CC(self) -> Header:  # noqa: N802
+    def CC(self) -> pd.DataFrame:  # noqa: N802
         return self.extended_headers

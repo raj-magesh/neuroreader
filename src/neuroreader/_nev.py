@@ -1,7 +1,7 @@
 import functools
 import itertools
 import os
-from typing import TYPE_CHECKING, Literal, TypedDict, final
+from typing import TYPE_CHECKING, Literal, TypedDict, cast, final
 
 import numpy as np
 import numpy.typing as npt
@@ -88,7 +88,10 @@ EXTENDED_HEADER_FIELDS: dict[str, tuple[Field, ...]] = {
     ),
 }
 
-DATA_PACKET_ID_MAPPING = {
+DATA_PACKET_ID_MAPPING: dict[
+    Literal["Digital Events", "Spike Events", "Stimulation Events"],
+    list[int],
+] = {
     "Digital Events": [0],
     "Spike Events": list(range(1, 512 + 1)),
     "Stimulation Events": list(range(5121, 5632 + 1)),
@@ -191,6 +194,7 @@ class NEV:
                 packet_id_ = read_field(f, field=packet_id)
                 _ = f.seek(-packet_id.n_bytes, os.SEEK_CUR)
 
+                packet_id_ = cast("str", packet_id_)
                 headers.append(
                     read_fields(f, fields=EXTENDED_HEADER_FIELDS[packet_id_]),
                 )
@@ -210,7 +214,7 @@ class NEV:
         else:
             raise ValueError
 
-        self._data = {k: [] for k in DATA_PACKET_ID_MAPPING}
+        self._data = cast("Events", {k: [] for k in DATA_PACKET_ID_MAPPING})
 
         for bytes_ in itertools.batched(
             range(n_bytes_in_headers, n_bytes_in_file),
@@ -330,9 +334,9 @@ def _parse_spike_or_stimulation_events(
     events: npt.NDArray[np.uint8],
     *,
     event_type: Literal["Spike Events", "Stimulation Events"],
-    header: Header,
+    header: pd.DataFrame,
     packet_size: int,
-) -> xr.DataArray:
+) -> xr.DataArray | None:
     parsed_events = []
 
     packet_ids = np.squeeze(events[:, 4:6].view("<u2"))
@@ -380,7 +384,8 @@ def _parse_spike_or_stimulation_events(
 
     return (
         (
-            xr.concat(parsed_events, dim="event")
+            xr
+            .concat(parsed_events, dim="event")
             .set_xindex(["Packet ID", "Timestamp"])
             .sortby("Timestamp", "Packet ID")
             .rename({"Packet ID": "Electrode ID"})
@@ -416,7 +421,8 @@ def _parse_digital_events(
     )
 
     return (
-        pd.concat(
+        pd
+        .concat(
             [
                 x,
                 pd.DataFrame(
