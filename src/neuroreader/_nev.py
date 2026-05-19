@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 Events = TypedDict(
     "Events",
     {
-        "Digital Events": pd.DataFrame | None,
+        "Digital Events": pd.DataFrame,
         "Spike Events": xr.DataArray | None,
         "Stimulation Events": xr.DataArray | None,
     },
@@ -133,7 +133,6 @@ DATA_PACKET_FIELDS: dict[str, list[Field]] = {
 class NEV:
     def __init__(self, filepath: Path, *, n_packets_per_buffer: int = 2**20) -> None:
         self._filepath = filepath
-        self._data: Events
         self._read_headers()
         self._n_packets_per_buffer = n_packets_per_buffer
 
@@ -209,12 +208,10 @@ class NEV:
 
         n_packets = (n_bytes_in_file - n_bytes_in_headers) / n_bytes_per_packet
 
-        if n_packets.is_integer():
-            n_packets = int(n_packets)
-        else:
+        if not n_packets.is_integer():
             raise ValueError
 
-        self._data = cast("Events", {k: [] for k in DATA_PACKET_ID_MAPPING})
+        self._data = {k: [] for k in DATA_PACKET_ID_MAPPING}
 
         for bytes_ in itertools.batched(
             range(n_bytes_in_headers, n_bytes_in_file),
@@ -247,6 +244,7 @@ class NEV:
             self._data["Digital Events"],
             packet_size=n_bytes_per_packet,
         )
+
         for event_type in ("Spike Events", "Stimulation Events"):
             self._data[event_type] = _parse_spike_or_stimulation_events(
                 self._data[event_type],
