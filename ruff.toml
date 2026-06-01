@@ -1,6 +1,6 @@
-target-version = "py314"
 preview = true
 
 [lint]
 select = ["ALL"]
-ignore = ["CPY001", "D203", "D213", "COM812"]
+ignore = ["CPY001"]
+pydocstyle.convention = "numpy"
