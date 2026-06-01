@@ -292,7 +292,7 @@ def _parse_extended_headers(extended_headers: list[Header]) -> dict[str, pd.Data
             "Reserved": np.bytes_,
         })
         .assign(**{
-            "Bytes per Sample": lambda x: x["Bytes per Sample"].replace({0: 1}),
+            "Bytes per Sample": pd.col("Bytes per Sample").replace({0: 1}),
         })
         .set_index("Electrode ID")
         .drop(columns=["Packet ID", "Reserved"])
@@ -455,7 +455,7 @@ def _parse_diglabel_mode(header: pd.DataFrame) -> pd.DataFrame:
         categories=pd.Index(["serial", "parallel"]),
     )
     return header.assign(
-        Mode=lambda x: x["Mode"].replace({0: "serial", 1: "parallel"}),
+        Mode=pd.col("Mode").replace({0: "serial", 1: "parallel"}),
     ).astype({
         "Mode": mode_dtype,
     })

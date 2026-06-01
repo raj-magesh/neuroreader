@@ -117,9 +117,13 @@ def parse_filter_details(header: pd.DataFrame) -> pd.DataFrame:
     )
 
     return header.assign(**{
-        f"{direction} Pass Filter Type": lambda x: x[
-            f"{direction} Pass Filter Type"
-        ].replace({0: "None", 1: "Butterworth", 2: "Chebyshev"})
+        f"{direction} Pass Filter Type": (
+            pd.col(f"{direction} Pass Filter Type").replace({
+                0: "None",
+                1: "Butterworth",
+                2: "Chebyshev",
+            })
+        )
         for direction in ("High", "Low")
     }).astype({
         "High Pass Corner Frequency": "pint[mHz][UInt32]",

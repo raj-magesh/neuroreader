@@ -154,17 +154,17 @@ def _parse_extended_headers(
     headers = parse_filter_details(headers)
     return (
         headers.assign(**{
-            "Neural Processor Port": lambda x: (
-                x["Front End ID"]
-                .replace(list(range(4)), "A")
-                .replace(list(range(4, 8)), "B")
-                .replace(list(range(8, 12)), "C")
-                .replace(list(range(12, 16)), "D")
+            "Neural Processor Port": (
+                pd.col("Front End ID").replace(
+                    dict.fromkeys(range(4), "A")
+                    | dict.fromkeys(range(4, 8), "B")
+                    | dict.fromkeys(range(8, 12), "C")
+                    | dict.fromkeys(range(12, 16), "D")
+                )
             ),
-            "Analog Data Channel": lambda x: (
-                x["Electrode ID"] >= ANALOG_ELECTRODE_START_INDEX
-            ),
-            "Recording Electrode": lambda x: ~x["Analog Data Channel"],
+            "Analog Data Channel": pd.col("Electrode ID")
+            >= ANALOG_ELECTRODE_START_INDEX,
+            "Recording Electrode": ~pd.col("Analog Data Channel"),
         }).astype({
             "Electrode ID": np.uint16,
             "Front End ID": np.uint8,
