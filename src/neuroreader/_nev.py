@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import functools
 import itertools
 import os
@@ -216,7 +218,6 @@ class NEV:
         for bytes_ in itertools.batched(
             range(n_bytes_in_headers, n_bytes_in_file),
             n=self._n_packets_per_buffer * n_bytes_per_packet,
-            strict=False,
         ):
             contents = np.memmap(
                 self._filepath,
@@ -276,54 +277,58 @@ def _parse_extended_headers(extended_headers: list[Header]) -> dict[str, pd.Data
 
     headers = {key: pd.DataFrame(values) for key, values in headers.items()}
 
-    headers["NEUEVWAV"] = (
-        headers["NEUEVWAV"]
-        .astype({
-            "Electrode ID": np.uint16,
-            "Front End ID": np.uint8,
-            "Front End Connector Pin": np.uint8,
-            "Neural Amp Digitization Factor": "pint[nV][UInt16]",
-            "Energy Threshold": np.uint16,
-            "High Threshold": "pint[uV][Int16]",
-            "Low Threshold": "pint[uV][Int16]",
-            "Number of Sorted Units": np.uint8,
-            "Bytes per Sample": np.uint8,
-            "Stim Amp Digitization Factor": "pint[V][Float32]",
-            "Reserved": np.bytes_,
-        })
-        .assign(**{
-            "Bytes per Sample": pd.col("Bytes per Sample").replace({0: 1}),
-        })
-        .set_index("Electrode ID")
-        .drop(columns=["Packet ID", "Reserved"])
-    )
+    if len(headers["NEUEVWAV"]) > 0:
+        headers["NEUEVWAV"] = (
+            headers["NEUEVWAV"]
+            .astype({
+                "Electrode ID": np.uint16,
+                "Front End ID": np.uint8,
+                "Front End Connector Pin": np.uint8,
+                "Neural Amp Digitization Factor": "pint[nV][UInt16]",
+                "Energy Threshold": np.uint16,
+                "High Threshold": "pint[uV][Int16]",
+                "Low Threshold": "pint[uV][Int16]",
+                "Number of Sorted Units": np.uint8,
+                "Bytes per Sample": np.uint8,
+                "Stim Amp Digitization Factor": "pint[V][Float32]",
+                "Reserved": np.bytes_,
+            })
+            .assign(**{
+                "Bytes per Sample": pd.col("Bytes per Sample").replace({0: 1}),
+            })
+            .set_index("Electrode ID")
+            .drop(columns=["Packet ID", "Reserved"])
+        )
 
-    headers["NEUEVFLT"] = parse_filter_details(headers["NEUEVFLT"])
-    headers["NEUEVFLT"] = (
-        headers["NEUEVFLT"]
-        .astype({
-            "Electrode ID": np.uint16,
-            "Reserved": np.bytes_,
-        })
-        .set_index("Electrode ID")
-        .drop(columns=["Packet ID", "Reserved"])
-    )
+    if len(headers["NEUEVFLT"]) > 0:
+        headers["NEUEVFLT"] = parse_filter_details(headers["NEUEVFLT"])
+        headers["NEUEVFLT"] = (
+            headers["NEUEVFLT"]
+            .astype({
+                "Electrode ID": np.uint16,
+                "Reserved": np.bytes_,
+            })
+            .set_index("Electrode ID")
+            .drop(columns=["Packet ID", "Reserved"])
+        )
 
-    headers["NEUEVLBL"] = (
-        headers["NEUEVLBL"]
-        .astype({
-            "Electrode ID": np.uint16,
-            "Reserved": np.bytes_,
-        })
-        .set_index("Electrode ID")
-        .drop(columns=["Packet ID", "Reserved"])
-    )
+    if len(headers["NEUEVLBL"]) > 0:
+        headers["NEUEVLBL"] = (
+            headers["NEUEVLBL"]
+            .astype({
+                "Electrode ID": np.uint16,
+                "Reserved": np.bytes_,
+            })
+            .set_index("Electrode ID")
+            .drop(columns=["Packet ID", "Reserved"])
+        )
 
-    headers["DIGLABEL"] = (
-        _parse_diglabel_mode(headers["DIGLABEL"])
-        .drop(columns=["Packet ID", "Reserved"])
-        .set_index("Label")
-    )
+    if len(headers["DIGLABEL"]) > 0:
+        headers["DIGLABEL"] = (
+            _parse_diglabel_mode(headers["DIGLABEL"])
+            .drop(columns=["Packet ID", "Reserved"])
+            .set_index("Label")
+        )
 
     return headers
 
@@ -336,6 +341,9 @@ def _parse_spike_or_stimulation_events(
     packet_size: int,
 ) -> xr.DataArray | None:
     parsed_events = []
+
+    if len(header) == 0:
+        return None
 
     packet_ids = np.squeeze(events[:, 4:6].view("<u2"))
     for n_bytes_per_sample in pd.unique(header["Bytes per Sample"]):

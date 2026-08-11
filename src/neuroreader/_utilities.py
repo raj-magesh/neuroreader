@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import struct
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Literal, NamedTuple, cast
