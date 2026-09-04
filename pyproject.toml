@@ -7,7 +7,7 @@ name = "neuroreader"
 version = "0.1.0"
 description = "Read and parse NEV, NSx, and NFx files from Ripple Neuro neural recording devices"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.14.7"
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]
 authors = [
@@ -31,12 +31,22 @@ classifiers = [
     "Typing :: Typed",
 ]
 urls = { source = "https://codeberg.org/raj-magesh/neuroreader" }
-dependencies = ["numpy", "pint", "pandas", "pint-pandas", "xarray"]
+dependencies = [
+    "numpy>=2.5.2",
+    "pandas>=3.0.5",
+    "pint-pandas>=0.8.0",
+    "pint>=0.25.3",
+    "xarray>=2026.7.0",
+    "netCDF4>=1.7.4",
+]
 
 [dependency-groups]
-dev = ["ruff", "ty", "pytest", "sphinx", "pandas-stubs"]
+dev = ["ruff", "ty", "deptry", "pytest", "sphinx", "pandas-stubs"]
 
 [tool.uv]
 required-environments = [
     "sys_platform == 'linux' and platform_machine == 'x86_64'",
 ]
+
+[tool.deptry.per_rule_ignores]
+DEP003 = ["neuroreader"]

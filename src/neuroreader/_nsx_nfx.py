@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import functools
 import os
 from typing import TYPE_CHECKING, ClassVar, Literal, final
@@ -7,7 +5,7 @@ from typing import TYPE_CHECKING, ClassVar, Literal, final
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
-import pint_pandas  # noqa: F401
+import pint_pandas  # ruff: ignore[unused-import]
 
 from neuroreader._utilities import (
     DataPacket,
@@ -161,7 +159,7 @@ def _parse_extended_headers(
                     dict.fromkeys(range(4), "A")
                     | dict.fromkeys(range(4, 8), "B")
                     | dict.fromkeys(range(8, 12), "C")
-                    | dict.fromkeys(range(12, 16), "D")
+                    | dict.fromkeys(range(12, 16), "D"),
                 )
             ),
             "Analog Data Channel": pd.col("Electrode ID")
@@ -185,11 +183,11 @@ class NFx(_NFxOrNSx):
     _FILETYPE = "NFx"
 
     @property
-    def NEUCDFLT(self) -> Header:  # noqa: N802
+    def NEUCDFLT(self) -> Header:  # ruff: ignore[invalid-function-name]
         return self.basic_header
 
     @property
-    def FC(self) -> pd.DataFrame:  # noqa: N802
+    def FC(self) -> pd.DataFrame:  # ruff: ignore[invalid-function-name]
         return self.extended_headers
 
 
@@ -198,9 +196,9 @@ class NSx(_NFxOrNSx):
     _FILETYPE = "NSx"
 
     @property
-    def NEURALCD(self) -> Header:  # noqa: N802
+    def NEURALCD(self) -> Header:  # ruff: ignore[invalid-function-name]
         return self.basic_header
 
     @property
-    def CC(self) -> pd.DataFrame:  # noqa: N802
+    def CC(self) -> pd.DataFrame:  # ruff: ignore[invalid-function-name]
         return self.extended_headers

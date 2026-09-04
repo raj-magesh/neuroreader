@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import functools
 import itertools
 import os
@@ -8,7 +6,7 @@ from typing import TYPE_CHECKING, Literal, TypedDict, cast, final
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
-import pint_pandas  # noqa: F401
+import pint_pandas  # ruff: ignore[unused-import]
 import xarray as xr
 
 from neuroreader._utilities import (
@@ -152,23 +150,23 @@ class NEV:
         return self._data
 
     @property
-    def NEURALEV(self) -> Header:  # noqa: N802
+    def NEURALEV(self) -> Header:  # ruff: ignore[invalid-function-name]
         return self._basic_header
 
     @property
-    def NEUEVWAV(self) -> pd.DataFrame:  # noqa: N802
+    def NEUEVWAV(self) -> pd.DataFrame:  # ruff: ignore[invalid-function-name]
         return self.extended_headers["NEUEVWAV"]
 
     @property
-    def NEUEVFLT(self) -> pd.DataFrame:  # noqa: N802
+    def NEUEVFLT(self) -> pd.DataFrame:  # ruff: ignore[invalid-function-name]
         return self.extended_headers["NEUEVFLT"]
 
     @property
-    def NEUEVLBL(self) -> pd.DataFrame:  # noqa: N802
+    def NEUEVLBL(self) -> pd.DataFrame:  # ruff: ignore[invalid-function-name]
         return self.extended_headers["NEUEVLBL"]
 
     @property
-    def DIGLABEL(self) -> pd.DataFrame:  # noqa: N802
+    def DIGLABEL(self) -> pd.DataFrame:  # ruff: ignore[invalid-function-name]
         return self.extended_headers["DIGLABEL"]
 
     @property
@@ -180,7 +178,7 @@ class NEV:
         return self.data["Stimulation Events"]
 
     @property
-    def digital_events(self) -> pd.DataFrame | None:
+    def digital_events(self) -> pd.DataFrame:
         return self.data["Digital Events"]
 
     def _read_headers(self) -> None:

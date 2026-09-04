@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import struct
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Literal, NamedTuple, cast
@@ -8,7 +6,6 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import pint
-import pint_pandas  # noqa: F401
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
