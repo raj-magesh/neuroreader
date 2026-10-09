@@ -1,6 +1,0 @@
-preview = true
-
-[lint]
-select = ["ALL"]
-ignore = ["CPY001"]
-pydocstyle.convention = "numpy"

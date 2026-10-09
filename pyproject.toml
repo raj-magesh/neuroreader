@@ -37,7 +37,6 @@ dependencies = [
     "pint-pandas>=0.8.0",
     "pint>=0.25.3",
     "xarray>=2026.7.0",
-    "netCDF4>=1.7.4",
 ]
 
 [dependency-groups]
@@ -48,5 +47,20 @@ required-environments = [
     "sys_platform == 'linux' and platform_machine == 'x86_64'",
 ]
 
-[tool.deptry.per_rule_ignores]
-DEP003 = ["neuroreader"]
+[tool.ruff]
+preview = true
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "missing-copyright-notice",
+    "line-too-long",
+    "missing-todo-link",
+    "missing-todo-author",
+]
+pydocstyle.convention = "numpy"
+logger-objects = ["loguru.logger"]
+typing-modules = ["numpy.typing"]
+
+[tool.deptry]
+known_first_party = ["neuroreader"]
